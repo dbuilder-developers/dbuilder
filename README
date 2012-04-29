@@ -1,0 +1,27 @@
+==================
+   dbuilder
+==================
+
+This tool is design to be easy to use, easy to build your D project. It is not
+written for cover all strangeness build. This tool will save your time for
+build comon project. 
+Most part of project do not need a complex build script. 
+
+dbuilder need:
+- your feed back
+- your help
+
+
+BUILD
+------
+$ ldc2 dbuilder/dparser.d  dbuilder/information.d  dbuilder/ini.d  dbuilder/main.d -of builder
+$ dmd dbuilder/dparser.d  dbuilder/information.d  dbuilder/ini.d  dbuilder/main.d -ofbuilder
+$ gdmd dbuilder/dparser.d  dbuilder/information.d  dbuilder/ini.d  dbuilder/main.d -ofbuilder
+
+
+INSTALL
+-------
+For linux user you can put exectubale programm to /usr/bin
+
+ 
+
