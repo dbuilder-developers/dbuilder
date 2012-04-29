@@ -14,9 +14,11 @@ dbuilder need:
 
 BUILD
 ------
-$ ldc2 dbuilder/dparser.d  dbuilder/information.d  dbuilder/ini.d  dbuilder/main.d -of builder
-$ dmd dbuilder/dparser.d  dbuilder/information.d  dbuilder/ini.d  dbuilder/main.d -ofbuilder
-$ gdmd dbuilder/dparser.d  dbuilder/information.d  dbuilder/ini.d  dbuilder/main.d -ofbuilder
+move to src dir and build with your compiler
+$ mv src
+$ ldc2  dbuilder/information.d  dbuilder/ini.d  dbuilder/main.d -of builder
+$ dmd   dbuilder/information.d  dbuilder/ini.d  dbuilder/main.d -ofbuilder
+$ gdmd  dbuilder/information.d  dbuilder/ini.d  dbuilder/main.d -ofbuilder
 
 
 INSTALL
@@ -24,4 +26,44 @@ INSTALL
 For linux user you can put exectubale programm to /usr/bin
 
  
+USAGE
+-----
+dbuilder works by 3 step
+1/ configure the project
+read in current directory if a file named dbuilder.cfg or dbuilder.ini exist
+read parameter froom command line (priority give to command line )
+
+2/ build the project
+Build project with the compiler given or default compiler
+
+3/ install the project
+Install the project to right path, platform dependant
+
+Config File
+-----------
+Can take name:
+- dbuilder.ini
+- dbuilder.cfg
+
+The config file works as key value
+type=<shared,static,executable>
+job=<number>
+destdir=<path>
+prefix=<path>
+bindir=<path>
+datadir=<path>
+docdir=<path>
+includedir=<path>
+libdir=<path>
+pkgconfigdir=<path>
+importsdir=<path>
+dflags=<compiler flag> warning some compiler do not have same flag use it only if need
+linktolib=<lib1,lib2,lib3> comma separated
+sourcedir=<path>
+sourcefiles=<path>
+buildir=<path>
+compiler=<name> use it from command line that is the better way
+arch=<arch name> default take same arch to the system you can force by using this parameter
+version<Major.Minor.Bump> eg 0.1.5 usefull for versionned shared lib
+filter=<file> comma separated not fully implemented for do not build selected files
 
