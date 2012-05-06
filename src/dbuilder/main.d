@@ -493,7 +493,7 @@ void builder( string[] args ){
                 break;
             case("executable"):
                 version( Windows ){
-                    if( extension(outFile != ".exe") )
+                    if( extension(outFile) != ".exe" )
                         outFile ~= ".exe";
                 }
                 output = buildNormalizedPath( iniFile[i]["builddir"],"bin", outFile ~  iniFile[i]["executableExt"] );
