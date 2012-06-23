@@ -92,6 +92,8 @@ void configure( string[] args ){
         writeln( "    --job --j -j       Set number of job to execute"                          );
         writeln( "    --configFile       Set path to config file"                               );
         writeln( "    --name --n -n      Set project name"                                      );
+        writeln( "    --sourcedir        Set directory where source files are located"          );
+        writeln( "    --sourceFiles      Set source files path (separated by coma)"             );
         writeln( "    --help --h -h      display this message"                                  );
         exit(0);
     }
@@ -178,18 +180,18 @@ void configure( string[] args ){
         projectInfo = new Section(projectName, 1);
 
         if( type != BuildType.unknown ){
-            switch( iniFile[i]["type"] ){
-                case("shared"):
+            switch( type ){
+                case BuildType.sharedLib:
                     projectInfo["type"] = "shared";
                     break;
-                case("static"):
+                case BuildType.staticLib:
                     projectInfo["type"] ="static";
                     break;
-                case("executable"):
+                case BuildType.executable:
                     projectInfo["type"] = "executable";
                     break;
                 default:
-                    throw new Exception( "Unknown build type %s".format(iniFile[i]["type"]) );
+                    throw new Exception( "Unknown build type" );
             }
         }
         else if( iniFile !is null  && "type" in iniFile[i] )
