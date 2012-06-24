@@ -453,13 +453,22 @@ void builder( string[] args ){
                 system( cmd );
             }
         }
-        oFiles      = array(map!(a => a = dirEntry( buildNormalizedPath( iniFile[i]["builddir"], "objects", stripExtension(a.name) ~ ".o")))(dFiles));
-        docFiles    = array(map!(a => a = dirEntry( buildNormalizedPath( iniFile[i]["builddir"], "doc", stripExtension(a.name) ~ ".html")))(dFiles));
-        diFiles     = array(map!(a => a = dirEntry( buildNormalizedPath( iniFile[i]["builddir"], "imports", stripExtension(a.name) ~ ".di")))(dFiles));
+        oFiles      = array (
+                                dFiles
+                                    .map!(a => a = dirEntry( buildNormalizedPath( iniFile[i]["builddir"], "objects", stripExtension(a.name) ~ ".o")))
+                            );
+        docFiles    = array (
+                                dFiles
+                                    .map!(a => a = dirEntry( buildNormalizedPath( iniFile[i]["builddir"], "doc", stripExtension(a.name) ~ ".html")))
+                            );
+        diFiles     = array (
+                                dFiles
+                                    .map!(a => a = dirEntry( buildNormalizedPath( iniFile[i]["builddir"], "imports", stripExtension(a.name) ~ ".di")))
+                            );
 
-        auto oFilesName     = map!(a => a.name)(oFiles);
-        auto docFilesName   = map!(a => a.name)(docFiles);
-        auto diFilesName    = map!(a => a.name)(diFiles);
+        auto oFilesName     = oFiles.map!(a => a.name);
+        auto docFilesName   = docFiles.map!(a => a.name);
+        auto diFilesName    = diFiles.map!(a => a.name);
 
         foreach( objects; array(oFilesName) )
             objectsSection[ baseName(objects) ] = objects;
