@@ -365,9 +365,9 @@ void configure( string[] args ){
         else if(iniFile !is null   && "version" in iniFile[i])
             project["version"]  = iniFile[i]["version"];
         else
-            project["projectVersion"] = "0.0.1";
+            project["version"] = "0.0.1";
         if( verbosity > 1 )
-            writefln("\t Project version set as: %s", project["projectVersion"]);
+            writefln("\t Project version set as: %s", project["version"]);
 
         project["linker"]           = info.flag.linker;
         project["dl"]               = info.flag.dl;

@@ -188,6 +188,7 @@ class Section{
          * Acces to a value in current Section by giving his key
          */
         string opIndex( string key ){
+            enforce( key in  _dict, "Unknown sub-section : %s".format(key) );
             return _dict[key];
         }
 
