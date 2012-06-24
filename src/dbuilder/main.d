@@ -42,6 +42,9 @@ import std.c.process;
 import std.process;
 import std.algorithm;
 
+version( Posix )
+    import core.sys.posix.sys.stat;
+
 import dbuilder.ini;
 import dbuilder.information;
 
@@ -423,6 +426,7 @@ void builder( string[] args ){
         Section objectsSection          = new Section("objects", 2);
         Section documentationsSection   = new Section("documentations", 2);
         Section importsSection          = new Section("imports", 2);
+        Section binarySection           = new Section("binary", 2);
 
         if( "sourcedir" in iniFile[i] ){
             foreach( f; iniFile[i]["sourcedir"] .split(","))
@@ -440,7 +444,7 @@ void builder( string[] args ){
         foreach( d; dFiles ){//todo use  iniFile["filter"]; use time to build, rebuild or do nothing
 
             bool needToBuild        = false;
-            string generatedObjFile = buildNormalizedPath( iniFile[i]["builddir"], "objects", stripExtension(d.name) ~ ".o");
+            string generatedObjFile = buildNormalizedPath( iniFile[i]["builddir"], "objects", stripExtension(d.name)[iniFile[i]["sourcedir"].length + 1 .. $] ~ ".o");
 
             if( exists( generatedObjFile ) ){
                 DirEntry tmp = dirEntry( generatedObjFile );
@@ -455,7 +459,9 @@ void builder( string[] args ){
 
                 foreach( dir; iniFile[i]["importsdir"].split(","))                            // add dir to include
                     cmd ~= " -I%s".format( dir );
-                cmd ~= " -I%s".format( iniFile[i]["sourcedir"] );
+
+                if( "sourcedir" in iniFile[i] )
+                    cmd ~= " -I%s".format( iniFile[i]["sourcedir"] );
 
                 if( iniFile[i]["type"] == "shared" ){
                     cmd ~= ( iniFile[i]["dl"] == "" ) ? " " ~ iniFile[i]["fpic"]: iniFile[i]["linker"] ~ iniFile[i]["dl"] ~ " " ~ iniFile[i]["fpic"];
@@ -466,11 +472,11 @@ void builder( string[] args ){
                 cmd ~= " -c %s %s%s %s%s %s%s".format (
                                                         d.name,
                                                         iniFile[i]["output"],
-                                                        buildNormalizedPath( iniFile[i]["builddir"], "objects",stripExtension(d.name) ~ ".o"),
+                                                        buildNormalizedPath( iniFile[i]["builddir"], "objects",stripExtension(d.name)[iniFile[i]["sourcedir"].length + 1 .. $] ~ ".o"),
                                                         iniFile[i]["docFile"],
-                                                        buildNormalizedPath( iniFile[i]["builddir"], "doc", stripExtension(d.name) ~ ".html"),
+                                                        buildNormalizedPath( iniFile[i]["builddir"], "doc", stripExtension(d.name)[iniFile[i]["sourcedir"].length + 1 .. $] ~ ".html"),
                                                         iniFile[i]["headerFile"],
-                                                        buildNormalizedPath( iniFile[i]["builddir"], "imports", stripExtension(d.name) ~ ".di")
+                                                        buildNormalizedPath( iniFile[i]["builddir"], "imports", stripExtension(d.name)[iniFile[i]["sourcedir"].length + 1 .. $] ~ ".di")
                                                     );
 
                 if( verbosity > 1 )
@@ -481,15 +487,15 @@ void builder( string[] args ){
         }
         oFiles      = array (
                                 dFiles
-                                    .map!(a => a = dirEntry( buildNormalizedPath( iniFile[i]["builddir"], "objects", stripExtension(a.name) ~ ".o")))
+                                    .map!(a => a = dirEntry( buildNormalizedPath( iniFile[i]["builddir"], "objects", stripExtension(a.name)[iniFile[i]["sourcedir"].length + 1 .. $] ~ ".o")))
                             );
         docFiles    = array (
                                 dFiles
-                                    .map!(a => a = dirEntry( buildNormalizedPath( iniFile[i]["builddir"], "doc", stripExtension(a.name) ~ ".html")))
+                                    .map!(a => a = dirEntry( buildNormalizedPath( iniFile[i]["builddir"], "doc", stripExtension(a.name)[iniFile[i]["sourcedir"].length + 1 .. $] ~ ".html")))
                             );
         diFiles     = array (
                                 dFiles
-                                    .map!(a => a = dirEntry( buildNormalizedPath( iniFile[i]["builddir"], "imports", stripExtension(a.name) ~ ".di")))
+                                    .map!(a => a = dirEntry( buildNormalizedPath( iniFile[i]["builddir"], "imports", stripExtension(a.name)[iniFile[i]["sourcedir"].length + 1 .. $] ~ ".di")))
                             );
 
         auto oFilesName     = oFiles.map!(a => a.name);
@@ -549,7 +555,9 @@ void builder( string[] args ){
                 throw new Exception("Unknown build type %s".format( iniFile[i]["type"] ));
         }
 
-        currentSection[ baseName(output) ] = output;
+        binarySection[ baseName(output) ] = output;
+
+        currentSection.addChild( binarySection );
         currentSection.addChild( objectsSection );
         currentSection.addChild( documentationsSection );
         currentSection.addChild( importsSection );
@@ -576,18 +584,12 @@ void cleaner( string[] args ){
     //~ defaultPoolThreads( to!uint(iniFile["jobs"]) );                                 // Set number of jobs to execute in same time
 
     for( size_t i = 0; i < max; i++ ){
-        foreach( string value; iniFile[i].get("objects").values ~ iniFile[i].get("documentations").values ~ iniFile[i].get("imports").values ){
+        foreach( string value; iniFile[i].get("objects").values ~ iniFile[i].get("documentations").values ~ iniFile[i].get("imports").values ~ iniFile[i].get("binary").values ){
             if( exists( value ) ){
                 if( verbosity > 1 )
                     writeln( "\t Removing file: " ~ value );
                 remove( value );
             }
-        }
-
-        if( exists(  iniFile[i]["out"] ) ){
-            if( verbosity > 1 )
-                writeln( "\t Removing file: " ~ iniFile[i]["out"] );
-            remove( iniFile[i]["out"] );
         }
     }
 
@@ -653,35 +655,38 @@ void installer( string[] args ){
             case("shared"):
                 if( !exists( libdirProject ) )
                     mkdirRecurse( libdirProject );
-
-                string dest = currentBuild["out"].replace( buildlibDir, libdirProject );
-
-                if( verbosity > 1 )
-                    writeln( "Copy ",  currentBuild["out"], " to ", dest);
-
-                copy(currentBuild["out"], dest);
+                foreach( binFiles; currentBuild.get("binary").values ){
+                    string dest = binFiles.replace( buildlibDir, libdirProject );
+                    if( verbosity > 1 )
+                        writeln( "Copy ",  binFiles, " to ", dest);
+                    copy(binFiles, dest);
+                }
                 break;
             case("static"):
                 if( !exists( libdirProject ) )
                     mkdirRecurse( libdirProject );
+                foreach( binFiles; currentBuild.get("binary").values ){
+                    string dest = binFiles.replace( buildlibDir, libdirProject );
 
-                string dest =currentBuild["out"].replace( buildlibDir, libdirProject );
+                    if( verbosity > 1 )
+                        writeln( "Copy ",  binFiles, " to ", dest);
 
-                if( verbosity > 1 )
-                    writeln( "Copy ",  currentBuild["out"], " to ", dest);
-
-                copy(currentBuild["out"], dest);
+                    copy(binFiles, dest);
+                }
                 break;
             case("executable"):
                 if( !exists( bindirProject ) )
                     mkdirRecurse( bindirProject );
+                foreach( binFiles; currentBuild.get("binary").values ){
+                    string dest = binFiles.replace( buildbinDir, bindirProject );
 
-                string dest = currentBuild["out"].replace( buildbinDir, bindirProject );
+                    if( verbosity > 1 )
+                        writeln( "Copy ",  binFiles, " to ", dest);
 
-                if( verbosity > 1 )
-                    writeln( "Copy ",  currentBuild["out"], " to ", dest);
-
-                copy(currentBuild["out"], dest);
+                    copy(binFiles, dest);
+                    version( Posix )
+                        chmod( dest.toStringz, S_IRUSR| S_IWUSR| S_IXUSR | S_IRGRP| S_IXGRP| S_IROTH | S_IXOTH );
+                }
                 break;
             default:
                 throw new Exception("Unknown build type %s".format( configFile[i]["type"] ));
