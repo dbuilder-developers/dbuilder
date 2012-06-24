@@ -48,32 +48,52 @@ import dbuilder.information;
 enum    string cachedir            = ".cache";
 enum    string configCacheFile     = buildNormalizedPath( cachedir, "dbuilder.cfg" );
 enum    string buildCacheFile      = buildNormalizedPath( cachedir, "build.cfg" );
-enum    string dbuilder_version    = "0.0.1";
+enum    string dbuilder_version    = "0.1.3";
 shared  size_t verbosity           = 1;
 
 void configure( string[] args ){
-    int         jobNumber           = -1;
-    size_t      arch                = 0;
-    string      builddir            = "";
-    string      destdir             = "";
-    string      prefix              = "";
-    string      bindir              = "";
-    string      datadir             = "";
-    string      docdir              = "";
-    string      includedir          = "";
-    string      libdir              = "";
-    string      pkgconfigdir        = "";
-    string      importsdir          = "";
-    string      compiler            = "";
-    string      dflags              = "";
-    string      linktolib           = "";
-    string      projectName         = "out";
-    string      sourceDir           = "";
-    string      sourceFiles         = "";
-    BuildType   type                = BuildType.unknown;
-    string      configFile          = "";
-    string      projectVersion      = "";
+    int                 jobNumber           = -1;
+    size_t              arch                = 0;
+    string              builddir            = "";
+    string              destdir             = "";
+    string              prefix              = "";
+    string              bindir              = "";
+    string              datadir             = "";
+    string              docdir              = "";
+    string              includedir          = "";
+    string              libdir              = "";
+    string              pkgconfigdir        = "";
+    string              importsdir          = "";
+    string              compiler            = "";
+    string              dflags              = "";
+    string              linktolib           = "";
+    string              projectName         = "";
+    string[][string]    sourceDir           = null;
+    string[][string]    sourceFiles         = null;
+    BuildType           type                = BuildType.unknown;
+    string              configFile          = "";
+    string              projectVersion      = "";
 
+    void toHash( ref string[][string] hash, ref string var ){
+        sizediff_t position = var.countUntil(':');
+        string     key      = "";
+        writeln(var);
+        if( position < 0 ){
+            position = 0;
+            key = "unknown";
+        }
+        else
+            key = var[0 .. position];
+
+        hash[key] = var[position + 1 .. $].split(",");
+
+    }
+    void sourceDirToHash( string option, string value ){
+        toHash( sourceDir, value);
+    }
+    void sourceFilesToHash( string option, string value ){
+        toHash( sourceFiles, value);
+    }
     void help(){
         writeln( "Usage: dbuilder configure "                                                   );
         writeln( "Options:"                                                                     );
@@ -99,65 +119,56 @@ void configure( string[] args ){
     }
     getopt(
         args,
-        "projectversion",   &projectVersion ,
-        "compiler"      ,   &compiler       ,
-        "arch|m"        ,   &arch           ,
-        "destdir"       ,   &destdir        ,
-        "prefix"        ,   &prefix         ,
-        "builddir"      ,   &builddir       ,
-        "bindir"        ,   &bindir         ,
-        "datadir"       ,   &datadir        ,
-        "docdir"        ,   &docdir         ,
-        "includedir"    ,   &includedir     ,
-        "libdir"        ,   &libdir         ,
-        "pkgconfigdir"  ,   &pkgconfigdir   ,
-        "dflags"        ,   &dflags         ,
-        "import"        ,   &importsdir     ,
-        "linktolib"     ,   &linktolib      ,
-        "type"          ,   &type           ,
-        "job|j"         ,   &jobNumber      ,
-        "configFile"    ,   &configFile     ,
-        "name|n"        ,   &projectName    ,
-        "sourcedir"     ,   &sourceDir      ,
-        "sourceFiles"   ,   &sourceFiles    ,
+        "projectversion",   &projectVersion     ,
+        "compiler"      ,   &compiler           ,
+        "arch|m"        ,   &arch               ,
+        "destdir"       ,   &destdir            ,
+        "prefix"        ,   &prefix             ,
+        "builddir"      ,   &builddir           ,
+        "bindir"        ,   &bindir             ,
+        "datadir"       ,   &datadir            ,
+        "docdir"        ,   &docdir             ,
+        "includedir"    ,   &includedir         ,
+        "libdir"        ,   &libdir             ,
+        "pkgconfigdir"  ,   &pkgconfigdir       ,
+        "dflags"        ,   &dflags             ,
+        "import"        ,   &importsdir         ,
+        "linktolib"     ,   &linktolib          ,
+        "type"          ,   &type               ,
+        "job|j"         ,   &jobNumber          ,
+        "configFile"    ,   &configFile         ,
+        "name|n"        ,   &projectName        ,
+        "sourcedir"     ,   &sourceDirToHash    ,
+        "sourceFiles"   ,   &sourceFilesToHash  ,
         "help|h"        ,   &help
     );
 
     if( verbosity > 0 )
         writeln("→ Executing the configuration");
 
-    if( sourceDir == "" && sourceFiles == "" )
-        sourceDir = ".";
-
-
-    if( verbosity > 1 ){
-        writefln("\t Source directory: %s" , (sourceDir != "")     ? sourceDir     : "any" );
-        writefln("\t Source files: %s"     , (sourceFiles != "")   ? sourceFiles   : "any" );
-    }
-
-    if( compiler == "" ){                           // if no compiler setted by user try to find one installed in current system
+    if( compiler.empty ){                           // if no compiler setted by user try to find one installed in current system
         compiler = getCompiler();
-        assert( compiler != "", "No D compiler found" );
+        assert( ! compiler.empty, "No D compiler found" );
 
         if( verbosity > 1 )
             writefln("\t Compiler: %s", compiler);
     }
 
-    Section root        = new Section("root", 0);   // Where cache data will be stored
-    Section projectInfo = null;
+    Section root    = new Section("root", 0);   // Where cache data will be stored
+    Section project = null;
 
     Information info = getInformation( compiler );  // get information to selected D compiler
     IniFile iniFile;
     size_t  max;
 
-    if(  configFile == "" ){                        // If no config file set from command line
+    if(  configFile.empty ){                        // If no config file set from command line
         if( exists( "dbuilder.cfg" ) )              // check if in current dir dbuilder.cfg file exist
             configFile = "dbuilder.cfg";
         else if( exists( "dbuilder.ini" ) )         // or if dbuilder.ini file exist
             configFile = "dbuilder.ini";
     }
 
-    if( configFile != "" ){                         // If they a config file load his parameter priorities give to command line
+    if( ! configFile.empty ){                         // If they a config file load his parameter priorities give to command line
         if( verbosity > 1 )
             writefln("\t Reading config file: %s", configFile);
         iniFile     = dbuilder.ini.open( configFile );
@@ -168,8 +179,8 @@ void configure( string[] args ){
 
     for( size_t i = 0; i < max; i++ ){
 
-        if( projectName == "" ){
-            if( iniFile !is null )
+        if( projectName.empty ){
+            if( projectName !is null )
                 projectName = iniFile[i].name;
             else
                 projectName = "dproject";
@@ -177,193 +188,205 @@ void configure( string[] args ){
         if( verbosity > 1 )
             writefln("\t Configuring project: %s", projectName);
 
-        projectInfo = new Section(projectName, 1);
+        project = new Section(projectName, 1);
 
         if( type != BuildType.unknown ){
             switch( type ){
                 case BuildType.sharedLib:
-                    projectInfo["type"] = "shared";
+                    project["type"] = "shared";
                     break;
                 case BuildType.staticLib:
-                    projectInfo["type"] ="static";
+                    project["type"] ="static";
                     break;
                 case BuildType.executable:
-                    projectInfo["type"] = "executable";
+                    project["type"] = "executable";
                     break;
                 default:
                     throw new Exception( "Unknown build type" );
             }
         }
         else if( iniFile !is null  && "type" in iniFile[i] )
-            projectInfo["type"] = iniFile[i]["type"];
+            project["type"] = iniFile[i]["type"];
         else
-            projectInfo["type"] = "executable";
+            project["type"] = "executable";
 
         if( verbosity > 1 )
-            writefln("\t Project set as: %s", projectInfo["type"]);
+            writefln("\t Project set as: %s", project["type"]);
 
         if( jobNumber != -1 )
-            projectInfo["jobs"] = to!string(jobNumber);
+            project["jobs"] = to!string(jobNumber);
         else if( iniFile !is null  && "jobs" in iniFile[i] )
-            projectInfo["jobs"] = iniFile[i]["jobs"];
+            project["jobs"] = iniFile[i]["jobs"];
         else
-            projectInfo["jobs"] = to!string( totalCPUs );
+            project["jobs"] = to!string( totalCPUs );
 
         if( verbosity > 1 )
-            writefln("\t Number of job to execute in same time: %s", projectInfo["jobs"]);
+            writefln("\t Number of job to execute in same time: %s", project["jobs"]);
 
-        if( destdir != "" )
-            projectInfo["destdir"] = destdir;
+        if( ! destdir.empty )
+            project["destdir"] = destdir;
         else if( iniFile !is null  && "destdir" in iniFile[i] )
-            projectInfo["destdir"] = iniFile[i]["destdir"];
+            project["destdir"] = iniFile[i]["destdir"];
         else
-             projectInfo["destdir"] = "";
+             project["destdir"] = "";
         if( verbosity > 1 )
-            writefln("\t Destination directory: %s", ( projectInfo["destdir"] != "" ) ? projectInfo["destdir"] : "any");
+            writefln("\t Destination directory: %s", ( ! project["destdir"].empty ) ? project["destdir"] : "None");
 
 
-        if( prefix != "" ){
-            projectInfo["prefix"]   = prefix;
+        if( ! prefix.empty ){
+            project["prefix"]   = prefix;
             info.dir.prefix         = prefix;
         }
         else if( iniFile !is null  && "prefix" in iniFile[i] ){
-            projectInfo["prefix"]   = iniFile[i]["prefix"];
+            project["prefix"]   = iniFile[i]["prefix"];
             info.dir.prefix         = prefix;
         }
         else
-             projectInfo["prefix"] = info.dir.prefix;
+             project["prefix"] = info.dir.prefix;
 
         if( verbosity > 1 )
-            writefln("\t Prefix: %s", projectInfo["prefix"]);
-        if( bindir != "" )
-            projectInfo["bindir"] = bindir;
+            writefln("\t Prefix: %s", project["prefix"]);
+        if( ! bindir.empty )
+            project["bindir"] = bindir;
         else if( iniFile !is null  && "bindir" in iniFile[i] )
-            projectInfo["bindir"] = iniFile[i]["bindir"];
+            project["bindir"] = iniFile[i]["bindir"];
         else
-             projectInfo["bindir"] = info.dir.bin;
+             project["bindir"] = info.dir.bin;
         if( verbosity > 1 )
-            writefln("\t Bin directory: %s", projectInfo["bindir"]);
+            writefln("\t Bin directory: %s", project["bindir"]);
 
-        if( datadir != "" )
-            projectInfo["datadir"] = datadir;
+        if( ! datadir.empty )
+            project["datadir"] = datadir;
         else if( iniFile !is null  && "datadir" in iniFile[i] )
-            projectInfo["datadir"] = iniFile[i]["datadir"];
+            project["datadir"] = iniFile[i]["datadir"];
         else
-             projectInfo["datadir"] = info.dir.data;
+             project["datadir"] = info.dir.data;
         if( verbosity > 1 )
-            writefln("\t Data directory: %s", projectInfo["datadir"]);
+            writefln("\t Data directory: %s", project["datadir"]);
 
-        if( docdir != ""  )
-            projectInfo["docdir"] = docdir;
+        if( ! docdir.empty  )
+            project["docdir"] = docdir;
         else if( iniFile !is null  && "docdir" in iniFile[i] )
-            projectInfo["docdir"] = iniFile[i]["docdir"];
+            project["docdir"] = iniFile[i]["docdir"];
         else
-             projectInfo["docdir"] = info.dir.doc;
+             project["docdir"] = info.dir.doc;
         if( verbosity > 1 )
-            writefln("\t Documentation directory: %s", projectInfo["docdir"]);
+            writefln("\t Documentation directory: %s", project["docdir"]);
 
-        if( includedir != "" )
-            projectInfo["includedir"] = includedir;
+        if( ! includedir.empty )
+            project["includedir"] = includedir;
         else if( iniFile !is null  && "includedir" in iniFile[i] )
-            projectInfo["includedir"] = iniFile[i]["includedir"];
+            project["includedir"] = iniFile[i]["includedir"];
         else
-             projectInfo["includedir"] = info.dir.include;
+             project["includedir"] = info.dir.include;
         if( verbosity > 1 )
-            writefln("\t Include directory: %s", projectInfo["includedir"]);
+            writefln("\t Include directory: %s", project["includedir"]);
 
-        if( libdir != "" )
-            projectInfo["libdir"] = libdir;
+        if( ! libdir.empty )
+            project["libdir"] = libdir;
         else if( iniFile !is null  && "libdir" in iniFile[i] )
-            projectInfo["libdir"] = iniFile[i]["libdir"];
+            project["libdir"] = iniFile[i]["libdir"];
         else
-             projectInfo["libdir"] = info.dir.lib;
+             project["libdir"] = info.dir.lib;
         if( verbosity > 1 )
-            writefln("\t Library directory: %s", projectInfo["libdir"]);
+            writefln("\t Library directory: %s", project["libdir"]);
 
-        if( pkgconfigdir != "" )
-            projectInfo["pkgconfigdir"] = pkgconfigdir;
+        if( ! pkgconfigdir.empty )
+            project["pkgconfigdir"] = pkgconfigdir;
         else if( iniFile !is null  && "pkgconfigdir" in iniFile[i] )
-            projectInfo["pkgconfigdir"] = iniFile[i]["pkgconfigdir"];
+            project["pkgconfigdir"] = iniFile[i]["pkgconfigdir"];
         else
-             projectInfo["pkgconfigdir"] = info.dir.pkgconfig;
+             project["pkgconfigdir"] = info.dir.pkgconfig;
         if( verbosity > 1 )
-            writefln("\t Package config directory: %s", projectInfo["pkgconfigdir"]);
+            writefln("\t Package config directory: %s", project["pkgconfigdir"]);
 
-        if( importsdir != "" )
-            projectInfo["importsdir"] = importsdir;
+        if( ! importsdir.empty )
+            project["importsdir"] = importsdir;
         else if( iniFile !is null  && "importsdir" in iniFile[i] )
-            projectInfo["importsdir"] = iniFile[i]["importsdir"];
+            project["importsdir"] = iniFile[i]["importsdir"];
         else if( !info.dir.imports.empty )
-             projectInfo["importsdir"] = info.dir.imports.join(",");
+             project["importsdir"] = info.dir.imports.join(",");
         if( verbosity > 1 )
-            writefln("\t Imports directories: %s", projectInfo["importsdir"].split(","));
+            writefln("\t Imports directories: %s", project["importsdir"].split(","));
 
-        if( dflags != "" )
-            projectInfo["dflags"] = dflags;
+        if( ! dflags.empty )
+            project["dflags"] = dflags;
         else if(iniFile !is null   && "dflags" in iniFile[i])
-            projectInfo["dflags"]  = iniFile[i]["dflags"];
+            project["dflags"]  = iniFile[i]["dflags"];
         else
-             projectInfo["dflags"] = info.dflags;
+             project["dflags"] = info.dflags;
         if( verbosity > 1 )
-            writefln("\t D flags: %s", projectInfo["dflags"]);
+            writefln("\t D flags: %s", project["dflags"]);
 
-        if( linktolib != "" )
-            projectInfo["linktolib"] = linktolib;
+        if( ! linktolib.empty )
+            project["linktolib"] = linktolib;
         else if(iniFile !is null   && "linktolib" in iniFile[i])
-            projectInfo["linktolib"] = iniFile[i]["linktolib"];
+            project["linktolib"] = iniFile[i]["linktolib"];
         else if( !info.linktolib.empty )
-             projectInfo["linktolib"] = info.linktolib.join(",");
-        if( "linktolib" in projectInfo && verbosity > 1 )
-            writefln("\t Libraries which we need to link against current project: %s", projectInfo["linktolib"].split(","));
+             project["linktolib"] = info.linktolib.join(",");
+        if( "linktolib" in project && verbosity > 1 )
+            writefln("\t Libraries which we need to link against current project: %s", project["linktolib"].split(","));
 
-        if( sourceDir != "" )
-            projectInfo["sourcedir"] = sourceDir;
+        if( sourceDir !is null && projectName in sourceDir && ! sourceDir[projectName].empty )
+            project["sourcedir"] = sourceDir[projectName].join(",");
+        else if(iniFile !is null   && "sourcedir" in iniFile[i] && ! iniFile[i]["sourcedir"].empty )
+            project["sourcedir"] = iniFile[i]["sourcedir"];
 
-        if( sourceFiles != "" )
-            projectInfo["sourcefiles"] = sourceFiles;
+        if( sourceFiles !is null && projectName in sourceFiles && ! sourceFiles[projectName].empty )
+            project["sourcefiles"] = sourceFiles[projectName].join(",");
+        else if(iniFile !is null   && "sourcefiles" in iniFile[i] && ! iniFile[i]["sourcefiles"].empty )
+            project["sourcefiles"] = iniFile[i]["sourcefiles"];
 
-        if( builddir != "" )
-            projectInfo["builddir"] = builddir;
+        if( "sourcedir" !in project && "sourcefiles" !in project )
+            project["sourcedir"] = ["."].join(",");
+
+        if( verbosity > 1 ){
+            writefln("\t Source directory: %s" , ( "sourcedir" in project && !project["sourcedir"].empty ) ? project["sourcedir"] : "None" );
+            writefln("\t Source files: %s"     , ( "sourcefiles" in project && !project["sourcefiles"].empty ) ? project["sourcefiles"] : "None"  );
+        }
+
+        if( ! builddir.empty )
+            project["builddir"] = builddir;
         else
-            projectInfo["builddir"] = "build";
+            project["builddir"] = "build";
 
         if( verbosity > 1 )
-            writefln("\t Build directory: %s", projectInfo["builddir"]);
+            writefln("\t Build directory: %s", project["builddir"]);
 
-        projectInfo["compiler"] = compiler;
+        project["compiler"] = compiler;
 
         if( arch != 0 )
-            projectInfo["arch"] = to!string(arch);
+            project["arch"] = to!string(arch);
         else
-            projectInfo["arch"] = to!string(info.arch);
+            project["arch"] = to!string(info.arch);
 
-        if( projectVersion != "" )
-            projectInfo["version"] = projectVersion;
+        if( ! projectVersion.empty )
+            project["version"] = projectVersion;
         else if(iniFile !is null   && "version" in iniFile[i])
-            projectInfo["version"]  = iniFile[i]["version"];
+            project["version"]  = iniFile[i]["version"];
         else
-            projectInfo["projectVersion"] = "0.0.1";
+            project["projectVersion"] = "0.0.1";
         if( verbosity > 1 )
-            writefln("\t Project version set as: %s", projectInfo["projectVersion"]);
+            writefln("\t Project version set as: %s", project["projectVersion"]);
 
-        projectInfo["linker"]           = info.flag.linker;
-        projectInfo["dl"]               = info.flag.dl;
-        projectInfo["fpic"]             = info.flag.fpic;
-        projectInfo["output"]           = info.flag.output;
-        projectInfo["headerFile"]       = info.flag.headerFile;
-        projectInfo["docFile"]          = info.flag.docFile;
-        projectInfo["noObj"]            = info.flag.noObj;
-        projectInfo["ddeprecated"]      = info.flag.ddeprecated;
-        projectInfo["ddoc_macro"]       = info.flag.ddoc_macro;
-        projectInfo["dversion"]         = info.flag.dversion;
-        projectInfo["soname"]           = info.flag.soname;
-        projectInfo["phobos"]           = info.flag.phobos;
-        projectInfo["druntime"]         = info.flag.druntime;
-        projectInfo["staticLibExt"]     = info.static_lib_ext;
-        projectInfo["dynamicLibExt"]    = info.dynamic_lib_ext;
-        projectInfo["executableExt"]    = info.executable_ext;
-        projectInfo["filter"]           = info.filter.join(",");
-        root.addChild( projectInfo );
+        project["linker"]           = info.flag.linker;
+        project["dl"]               = info.flag.dl;
+        project["fpic"]             = info.flag.fpic;
+        project["output"]           = info.flag.output;
+        project["headerFile"]       = info.flag.headerFile;
+        project["docFile"]          = info.flag.docFile;
+        project["noObj"]            = info.flag.noObj;
+        project["ddeprecated"]      = info.flag.ddeprecated;
+        project["ddoc_macro"]       = info.flag.ddoc_macro;
+        project["dversion"]         = info.flag.dversion;
+        project["soname"]           = info.flag.soname;
+        project["phobos"]           = info.flag.phobos;
+        project["druntime"]         = info.flag.druntime;
+        project["staticLibExt"]     = info.static_lib_ext;
+        project["dynamicLibExt"]    = info.dynamic_lib_ext;
+        project["executableExt"]    = info.executable_ext;
+        project["filter"]           = info.filter.join(",");
+        root.addChild( project );
     }
     root.shrink;
     if( !exists( cachedir ) )
@@ -372,7 +395,7 @@ void configure( string[] args ){
         assert( isDir( cachedir ), "A file " ~ cachedir ~ " exist already then it is impossible to create a directory with same name" );
 
     File cacheInfo = File( configCacheFile, "w" );
-    cacheInfo.write( projectInfo.toString() );
+    cacheInfo.write( project.toString() );
     cacheInfo.close();
 
 }
@@ -399,12 +422,13 @@ void builder( string[] args ){
         Section documentationsSection   = new Section("documentations", 2);
         Section importsSection          = new Section("imports", 2);
 
-        if( "sourcedir" in iniFile[i] )
-            dFiles = array( dirEntries( iniFile[i]["sourcedir"], SpanMode.depth).filter!((a) => endsWith(a.name, ".d")) );
-
+        if( "sourcedir" in iniFile[i] ){
+            foreach( f; iniFile[i]["sourcedir"] .split(","))
+                dFiles ~= array( dirEntries( f, SpanMode.depth).filter!((a) => endsWith(a.name, ".d")) );
+        }
 
         if( "sourcefiles" in iniFile[i] ){
-            foreach( f; iniFile[i]["sourcefiles"].split(",") )
+            foreach( f; iniFile[i]["sourcefiles"] .split(","))
                 dFiles ~= dirEntry(f);
         }
 
