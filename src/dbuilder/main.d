@@ -399,16 +399,19 @@ void builder( string[] args ){
         Section documentationsSection   = new Section("documentations", 2);
         Section importsSection          = new Section("imports", 2);
 
-        if( "sourcedir" in iniFile[i] ){
-            dFiles = array(filter!((a) => endsWith(a.name, ".d"))( dirEntries( iniFile[i]["sourcedir"], SpanMode.depth)));
-        }
+        if( "sourcedir" in iniFile[i] )
+            dFiles = array( dirEntries( iniFile[i]["sourcedir"], SpanMode.depth).filter!((a) => endsWith(a.name, ".d")) );
+
 
         if( "sourcefiles" in iniFile[i] ){
             foreach( f; iniFile[i]["sourcefiles"].split(",") )
                 dFiles ~= dirEntry(f);
         }
 
-        foreach( d; parallel(dFiles) ){//todo use  iniFile["filter"]; use time to build, rebuild or do nothing
+        if( verbosity > 1 )
+            writeln( dFiles );
+
+        foreach( d; dFiles ){//todo use  iniFile["filter"]; use time to build, rebuild or do nothing
 
             bool needToBuild        = false;
             string generatedObjFile = buildNormalizedPath( iniFile[i]["builddir"], "objects", stripExtension(d.name) ~ ".o");
@@ -418,12 +421,15 @@ void builder( string[] args ){
                 if( d.timeLastModified < tmp.timeLastModified )
                     needToBuild = true;
             }
+            else
+                needToBuild = true;
 
             if( needToBuild ){
                 string cmd = "%s %s".format( iniFile[i]["compiler"], iniFile[i]["dflags"] );  // add compiler and his D flags
 
-                foreach( dir; iniFile[i]["importsdir"].split(","))                                    // add dir to include
+                foreach( dir; iniFile[i]["importsdir"].split(","))                            // add dir to include
                     cmd ~= " -I%s".format( dir );
+                cmd ~= " -I%s".format( iniFile[i]["sourcedir"] );
 
                 if( iniFile[i]["type"] == "shared" ){
                     cmd ~= ( iniFile[i]["dl"] == "" ) ? " " ~ iniFile[i]["fpic"]: iniFile[i]["linker"] ~ iniFile[i]["dl"] ~ " " ~ iniFile[i]["fpic"];
