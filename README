@@ -16,9 +16,9 @@ BUILD
 ------
 move to src dir and build with your compiler
 $ mv src
-$ ldc2  dbuilder/information.d  dbuilder/ini.d  dbuilder/main.d -of builder
-$ dmd   dbuilder/information.d  dbuilder/ini.d  dbuilder/main.d -ofbuilder
-$ gdmd  dbuilder/information.d  dbuilder/ini.d  dbuilder/main.d -ofbuilder
+$ ldc2  src/dbuilder/information.d  src/dbuilder/ini.d  src/dbuilder/main.d -of builder
+$ dmd   src/dbuilder/information.d  src/dbuilder/ini.d  src/dbuilder/main.d -ofbuilder
+$ gdmd  src/dbuilder/information.d  src/dbuilder/ini.d  src/dbuilder/main.d -ofbuilder
 
 
 INSTALL
