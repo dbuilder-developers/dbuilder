@@ -401,6 +401,8 @@ void configure( string[] args ){
 }
 
 void builder( string[] args ){
+    if( !exists( configCacheFile ) )
+        configure( [""] );
     if( verbosity > 0 )
         writeln("→ Executing the build");
     // Iterate over all *.d files in current directory and all its subdirectories auto dFiles = filter!`endsWith(a.name,".d")`(dirEntries(".",SpanMode.depth)); foreach(d; dFiles) writeln(d.name); // Hook it up with std.parallelism to compile them all in parallel: foreach(d; parallel(dFiles, 1)) //passes by 1 file to each thread { string cmd = "dmd -c " ~ d.name; writeln(cmd); std.process.system(cmd); }
@@ -562,6 +564,10 @@ void builder( string[] args ){
 }
 
 void cleaner( string[] args ){
+    if( !exists( buildCacheFile ) ){
+        writeln( "Nothing to clean!" );
+        exit(1);
+    }
     if( verbosity > 0 )
         writeln("→ Cleaning the project");
 
@@ -589,6 +595,8 @@ void cleaner( string[] args ){
 }
 
 void installer( string[] args ){
+    if( !exists( buildCacheFile ) )
+        builder( [""] );
     if( verbosity > 0 )
         writeln("→ Installing the project");
 
@@ -795,7 +803,7 @@ void main( string[] args ){
 
     }
     else if( targets["build"] != -1 || targets["clean"] != -1 || targets["install"] != -1 )
-       writeln( "Warning: no config file found in cache, ensure you have run previously the target configure" );
+       writeln( "Warning: configure, build and install step are turn to automatic mode" );
 
     getopt(
         args,
@@ -818,4 +826,5 @@ void main( string[] args ){
 
     if( targets["install"] != -1 )
         installer( arguments["install"] );
+
 }
