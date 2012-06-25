@@ -55,32 +55,33 @@ enum    string dbuilder_version    = "0.1.3";
 shared  size_t verbosity           = 1;
 
 void configure( string[] args ){
-    int                 jobNumber           = -1;
-    size_t              arch                = 0;
-    string              builddir            = "";
-    string              destdir             = "";
-    string              prefix              = "";
-    string              bindir              = "";
-    string              datadir             = "";
-    string              docdir              = "";
-    string              includedir          = "";
-    string              libdir              = "";
-    string              pkgconfigdir        = "";
-    string              importsdir          = "";
-    string              compiler            = "";
-    string              dflags              = "";
-    string              linktolib           = "";
-    string              projectName         = "";
-    string[][string]    sourceDir           = null;
-    string[][string]    sourceFiles         = null;
-    BuildType           type                = BuildType.unknown;
-    string              configFile          = "";
-    string              projectVersion      = "";
+    int                         jobNumber           = -1;
+    size_t                      arch                = 0;
+    string                      builddir            = "";
+    string                      destdir             = "";
+    string                      prefix              = "";
+    string                      bindir              = "";
+    string                      datadir             = "";
+    string                      docdir              = "";
+    string                      includedir          = "";
+    string                      libdir              = "";
+    string                      pkgconfigdir        = "";
+    string                      importsdir          = "";
+    string                      compiler            = "";
+    string                      dflags              = "";
+    string                      linktolib           = "";
+    string                      projectName         = "";
+    string[][string]            sourceDir           = null;
+    string[][string]            sourceFiles         = null;
+    string[][string]            packageDir          = null;
+    string[][string][string]    excludeModule       = null;
+    BuildType                   type                = BuildType.unknown;
+    string                      configFile          = "";
+    string                      projectVersion      = "";
 
     void toHash( ref string[][string] hash, ref string var ){
         sizediff_t position = var.countUntil(':');
         string     key      = "";
-        writeln(var);
         if( position < 0 ){
             position = 0;
             key = "unknown";
@@ -91,6 +92,22 @@ void configure( string[] args ){
         hash[key] = var[position + 1 .. $].split(",");
 
     }
+    void excludeModuleToHash( string option, string value ){
+        string[][string] hash;
+        sizediff_t position = value.countUntil(':');
+        string     key      = "";
+        if( position < 0 ){
+            position = 0;
+            key = "unknown";
+        }
+        else
+            key = value[0 .. position];
+        toHash( hash, value[position + 1 .. $]);
+        excludeModule[key] = hash;
+    }
+    void packageDirToHash( string option, string value ){
+        toHash( packageDir, value);
+    }
     void sourceDirToHash( string option, string value ){
         toHash( sourceDir, value);
     }
@@ -98,26 +115,31 @@ void configure( string[] args ){
         toHash( sourceFiles, value);
     }
     void help(){
-        writeln( "Usage: dbuilder configure "                                                   );
-        writeln( "Options:"                                                                     );
-        writeln( "    --projectversion   Set project version (usefull for shared library)"      );
-        writeln( "    --compiler         Set compiler name"                                     );
-        writeln( "    --bindir           Set path to binary directory"                          );
-        writeln( "    --datadir          Set path to data directory"                            );
-        writeln( "    --docdir           Set path to doc directory"                             );
-        writeln( "    --includedir       Set path to include directory"                         );
-        writeln( "    --libdir           Set path to library directory"                         );
-        writeln( "    --pkgconfigdir     Set path to pkgconfig directory"                       );
-        writeln( "    --dflags           Set D flag to append"                                  );
-        writeln( "    --import           Set path to import directory to use"                   );
-        writeln( "    --linktolib        Set libraryies to used for link againt the application");
-        writeln( "    --type             Build as static library, shared library or executable" );
-        writeln( "    --job --j -j       Set number of job to execute"                          );
-        writeln( "    --configFile       Set path to config file"                               );
-        writeln( "    --name --n -n      Set project name"                                      );
-        writeln( "    --sourcedir        Set directory where source files are located"          );
-        writeln( "    --sourceFiles      Set source files path (separated by coma)"             );
-        writeln( "    --help --h -h      display this message"                                  );
+        writeln( "Usage: dbuilder configure "                                                                           );
+        writeln( "Options:"                                                                                             );
+        writeln( "    --projectversion   Set project version (usefull for shared library)"                              );
+        writeln( "    --compiler         Set compiler name"                                                             );
+        writeln( "    --arch -m          Set pefix architecture used to build  : -m32 -m64"                             );
+        writeln( "    --destdir          Set a chroot path usefull to inatll in your Home directory"                    );
+        writeln( "    --prefix           Set pefix path   "                                                             );
+        writeln( "    --bindir           Set path to binary directory"                                                  );
+        writeln( "    --datadir          Set path to data directory"                                                    );
+        writeln( "    --docdir           Set path to doc directory"                                                     );
+        writeln( "    --includedir       Set path to include directory"                                                 );
+        writeln( "    --libdir           Set path to library directory"                                                 );
+        writeln( "    --pkgconfigdir     Set path to pkgconfig directory"                                               );
+        writeln( "    --dflags           Set D flag to append: \"-d -g -w -O3\""                                        );
+        writeln( "    --import           Set path to import directory to use"                                           );
+        writeln( "    --linktolib        Set libraryies to used for link againt the application"                        );
+        writeln( "    --type             Build as static library, shared library or executable"                         );
+        writeln( "    --job --j -j       Set number of job to execute"                                                  );
+        writeln( "    --configFile       Set path to config file"                                                       );
+        writeln( "    --name --n -n      Set project name"                                                              );
+        writeln( "    --sourcedir        Set directory where source files are located: [project name]:<dir1>,<dir>..."  );
+        writeln( "    --sourceFiles      Set source files path: [project name]:<file1>,<file2>..."                      );
+        writeln( "    --packageDir       Set path to root package: [project name]:<package1>,<package2>..."             );
+        writeln( "    --sourceFiles      Set source files path [project name]:<version identifier>:path1>,<path2>..."   );
+        writeln( "    --help --h -h      display this message"                                                          );
         exit(0);
     }
     getopt(
@@ -464,10 +486,10 @@ void builder( string[] args ){
                     cmd ~= " -I%s".format( iniFile[i]["sourcedir"] );
 
                 if( iniFile[i]["type"] == "shared" ){
-                    cmd ~= ( iniFile[i]["dl"] == "" ) ? " " ~ iniFile[i]["fpic"]: iniFile[i]["linker"] ~ iniFile[i]["dl"] ~ " " ~ iniFile[i]["fpic"];
+                    cmd ~= ( iniFile[i]["dl"].empty ) ? " " ~ iniFile[i]["fpic"]: " " ~ iniFile[i]["linker"] ~ iniFile[i]["dl"] ~ " " ~ iniFile[i]["fpic"];
                 }
                 else if( iniFile[i]["type"] == "static" ){
-                    cmd ~= ( iniFile[i]["dl"] == "" ) ? "" : " " ~ iniFile[i]["linker"] ~ iniFile["dl"];
+                    cmd ~= ( iniFile[i]["dl"].empty ) ? "" : " " ~ iniFile[i]["linker"] ~ iniFile["dl"];
                 }
                 cmd ~= " -c %s %s%s %s%s %s%s".format (
                                                         d.name,

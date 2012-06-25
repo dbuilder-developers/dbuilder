@@ -245,7 +245,7 @@ Information getInformation( string compiler ){
             info.flag.ddeprecated   = "-d";
             info.flag.ddoc_macro    = "";
             info.flag.dversion      = "-d-version";
-            info.flag.soname        = "-soname";
+            info.flag.soname        = "-shared";
             info.flag.phobos        = "phobos-ldc";
             info.flag.druntime      = "druntime-ldc";
             break;
