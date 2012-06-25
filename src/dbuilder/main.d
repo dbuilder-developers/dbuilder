@@ -54,6 +54,14 @@ enum    string buildCacheFile      = buildNormalizedPath( cachedir, "build.cfg" 
 enum    string dbuilder_version    = "0.1.3";
 shared  size_t verbosity           = 1;
 
+struct Dfiles{
+    string sources;
+    string objects;
+    string documentations;
+    string interfaces;
+    string includeDir;
+}
+
 void configure( string[] args ){
     int                         jobNumber           = -1;
     size_t                      arch                = 0;
@@ -362,12 +370,18 @@ void configure( string[] args ){
         else if(iniFile !is null   && "sourcefiles" in iniFile[i] && ! iniFile[i]["sourcefiles"].empty )
             project["sourcefiles"] = iniFile[i]["sourcefiles"];
 
-        if( "sourcedir" !in project && "sourcefiles" !in project )
+        if( packageDir !is null && projectName in packageDir && ! packageDir[projectName].empty )
+            project["packagedir"] = packageDir[projectName].join(",");
+        else if(iniFile !is null   && "packagedir" in iniFile[i] && ! iniFile[i]["packagedir"].empty )
+            project["packagedir"] = iniFile[i]["packagedir"];
+
+        if( "sourcedir" !in project && "sourcefiles" !in project && "packagedir" !in project )
             project["sourcedir"] = ["."].join(",");
 
         if( verbosity > 1 ){
-            writefln("\t Source directory: %s" , ( "sourcedir" in project && !project["sourcedir"].empty ) ? project["sourcedir"] : "None" );
-            writefln("\t Source files: %s"     , ( "sourcefiles" in project && !project["sourcefiles"].empty ) ? project["sourcefiles"] : "None"  );
+            writefln("\t Source directory: %s"         , ( "sourcedir" in project && !project["sourcedir"].empty ) ? project["sourcedir"] : "None" );
+            writefln("\t Source files: %s"             , ( "sourcefiles" in project && !project["sourcefiles"].empty ) ? project["sourcefiles"] : "None"  );
+            writefln("\t Root package directory: %s"   , ( "packagedir" in project && !project["packagedir"].empty ) ? project["packagedir"] : "None"  );
         }
 
         if( ! builddir.empty )
@@ -426,6 +440,27 @@ void configure( string[] args ){
 }
 
 void builder( string[] args ){
+    void search( in string sourceDir, in string builddir, ref Dfiles[] dFiles, bool stripSourceDir = true ){
+        DirEntry[] files = array(
+                                dirEntries( sourceDir, SpanMode.depth )
+                                .filter!( ( a ) =>  a.name.extension == ".d"  )
+                            ) ;
+
+        size_t oldLength = dFiles.length;
+        dFiles.length    = oldLength + files.length;
+
+        foreach( i, d; parallel(files, 1) ){
+            size_t index                = oldLength + i;
+            string baseName             = (stripSourceDir) ? d.stripExtension[sourceDir.length + 1 .. $]: d.stripExtension;
+            dFiles[index].sources       = d;
+            dFiles[index].objects       = buildNormalizedPath ( builddir , "objects"        ,  baseName ~ ".o" );
+            dFiles[index].documentations= buildNormalizedPath ( builddir , "documentations" ,  baseName ~ ".html" );
+            dFiles[index].interfaces    = buildNormalizedPath ( builddir , "imports"        ,  baseName ~ ".di" );
+            if( stripSourceDir )
+                dFiles[index].includeDir = sourceDir;
+        }
+
+    }
     if( !exists( configCacheFile ) )
         configure( [""] );
     if( verbosity > 0 )
@@ -439,38 +474,41 @@ void builder( string[] args ){
 
     for( size_t i = 0; i < max; i++ ){
 
-        DirEntry[] dFiles;
-        DirEntry[] oFiles;
-        DirEntry[] docFiles;
-        DirEntry[] diFiles;
         string   outFile = iniFile[i].name;
-        Section currentSection          = new Section(iniFile[i].name, 1);
-        Section objectsSection          = new Section("objects", 2);
-        Section documentationsSection   = new Section("documentations", 2);
-        Section importsSection          = new Section("imports", 2);
-        Section binarySection           = new Section("binary", 2);
+        Dfiles[] dFiles                 = [];
+        Section  currentSection         = new Section(iniFile[i].name, 1);
+        Section  objectsSection         = new Section("objects", 2);
+        Section  documentationsSection  = new Section("documentations", 2);
+        Section  importsSection         = new Section("imports", 2);
+        Section  binarySection          = new Section("binary", 2);
 
         if( "sourcedir" in iniFile[i] ){
+
             foreach( f; iniFile[i]["sourcedir"] .split(","))
-                dFiles ~= array( dirEntries( f, SpanMode.depth).filter!((a) => endsWith(a.name, ".d")) );
+                search( f, iniFile[i]["builddir"], dFiles );
+        }
+
+        if( "packageDir" in iniFile[i] ){
+            foreach( f; iniFile[i]["packageDir"] .split(","))
+                search( f, iniFile[i]["builddir"], dFiles, false );
         }
 
         if( "sourcefiles" in iniFile[i] ){
             foreach( f; iniFile[i]["sourcefiles"] .split(","))
-                dFiles ~= dirEntry(f);
+                search( f, iniFile[i]["builddir"], dFiles, false );
         }
 
         if( verbosity > 1 )
             writeln( dFiles );
 
-        foreach( d; dFiles ){//todo use  iniFile["filter"]; use time to build, rebuild or do nothing
+        foreach( files; dFiles ){//todo use  iniFile["filter"]; use time to build, rebuild or do nothing
 
             bool needToBuild        = false;
-            string generatedObjFile = buildNormalizedPath( iniFile[i]["builddir"], "objects", stripExtension(d.name)[iniFile[i]["sourcedir"].length + 1 .. $] ~ ".o");
 
-            if( exists( generatedObjFile ) ){
-                DirEntry tmp = dirEntry( generatedObjFile );
-                if( d.timeLastModified < tmp.timeLastModified )
+            if( exists( files.objects ) ){
+                DirEntry tmp1 = dirEntry( files.sources );
+                DirEntry tmp2 = dirEntry( files.objects );
+                if( tmp1.timeLastModified < tmp2.timeLastModified )
                     needToBuild = true;
             }
             else
@@ -482,23 +520,21 @@ void builder( string[] args ){
                 foreach( dir; iniFile[i]["importsdir"].split(","))                            // add dir to include
                     cmd ~= " -I%s".format( dir );
 
-                if( "sourcedir" in iniFile[i] )
-                    cmd ~= " -I%s".format( iniFile[i]["sourcedir"] );
+                if( !files.includeDir.empty)
+                    cmd ~= " -I%s".format( files.includeDir );
 
-                if( iniFile[i]["type"] == "shared" ){
+                if( iniFile[i]["type"] == "shared" )
                     cmd ~= ( iniFile[i]["dl"].empty ) ? " " ~ iniFile[i]["fpic"]: " " ~ iniFile[i]["linker"] ~ iniFile[i]["dl"] ~ " " ~ iniFile[i]["fpic"];
-                }
-                else if( iniFile[i]["type"] == "static" ){
+                else if( iniFile[i]["type"] == "static" )
                     cmd ~= ( iniFile[i]["dl"].empty ) ? "" : " " ~ iniFile[i]["linker"] ~ iniFile["dl"];
-                }
                 cmd ~= " -c %s %s%s %s%s %s%s".format (
-                                                        d.name,
-                                                        iniFile[i]["output"],
-                                                        buildNormalizedPath( iniFile[i]["builddir"], "objects",stripExtension(d.name)[iniFile[i]["sourcedir"].length + 1 .. $] ~ ".o"),
-                                                        iniFile[i]["docFile"],
-                                                        buildNormalizedPath( iniFile[i]["builddir"], "doc", stripExtension(d.name)[iniFile[i]["sourcedir"].length + 1 .. $] ~ ".html"),
+                                                        files.sources           ,
+                                                        iniFile[i]["output"]    ,
+                                                        files.objects           ,
+                                                        iniFile[i]["docFile"]   ,
+                                                        files.documentations    ,
                                                         iniFile[i]["headerFile"],
-                                                        buildNormalizedPath( iniFile[i]["builddir"], "imports", stripExtension(d.name)[iniFile[i]["sourcedir"].length + 1 .. $] ~ ".di")
+                                                        files.interfaces
                                                     );
 
                 if( verbosity > 1 )
@@ -507,29 +543,14 @@ void builder( string[] args ){
                 system( cmd );
             }
         }
-        oFiles      = array (
-                                dFiles
-                                    .map!(a => a = dirEntry( buildNormalizedPath( iniFile[i]["builddir"], "objects", stripExtension(a.name)[iniFile[i]["sourcedir"].length + 1 .. $] ~ ".o")))
-                            );
-        docFiles    = array (
-                                dFiles
-                                    .map!(a => a = dirEntry( buildNormalizedPath( iniFile[i]["builddir"], "doc", stripExtension(a.name)[iniFile[i]["sourcedir"].length + 1 .. $] ~ ".html")))
-                            );
-        diFiles     = array (
-                                dFiles
-                                    .map!(a => a = dirEntry( buildNormalizedPath( iniFile[i]["builddir"], "imports", stripExtension(a.name)[iniFile[i]["sourcedir"].length + 1 .. $] ~ ".di")))
-                            );
 
-        auto oFilesName     = oFiles.map!(a => a.name);
-        auto docFilesName   = docFiles.map!(a => a.name);
-        auto diFilesName    = diFiles.map!(a => a.name);
+        foreach( files; dFiles ){
+            objectsSection[ baseName(files.objects) ] = files.objects;
+            documentationsSection[ baseName(files.documentations) ] = files.documentations;
+            importsSection[ baseName(files.interfaces) ] = files.interfaces;
+        }
 
-        foreach( objects; array(oFilesName) )
-            objectsSection[ baseName(objects) ] = objects;
-        foreach( docs; array(docFilesName) )
-            documentationsSection[ baseName(docs) ] = docs;
-        foreach( di; array(diFilesName) )
-            importsSection[ baseName(di) ] = di;
+        string[] oFiles = array( dFiles.map!( a => a.objects ).filter!( ( a ) =>  !a.empty ) );
 
         string output       = "";
         string linkingCmd   = "";
@@ -541,7 +562,7 @@ void builder( string[] args ){
                 else
                     assert( isDir("lib") , "A file \"lib\" exist already then it is impossible to create a directory with same name" );
                 output = buildNormalizedPath( iniFile[i]["builddir"],"lib", "lib" ~ outFile ~  iniFile[i]["dynamicLibExt"] ~ "." ~ iniFile[i]["version"] );
-                linkingCmd = "%s %s %s %s%s".format( iniFile[i]["compiler"], iniFile[i]["soname"], array(oFilesName).join( " " ), iniFile[i]["output"], output);
+                linkingCmd = "%s %s %s %s%s".format( iniFile[i]["compiler"], iniFile[i]["soname"], oFiles.join( " " ), iniFile[i]["output"], output);
                 if( verbosity > 1 )
                     writeln( linkingCmd );
                 system( linkingCmd );
@@ -553,7 +574,7 @@ void builder( string[] args ){
                     assert( isDir("lib") , "A file \"lib\" exist already then it is impossible to create a directory with same name" );
 
                 output = buildNormalizedPath( iniFile[i]["builddir"],"lib", "lib" ~ outFile ~  iniFile[i]["dynamicLibExt"] );
-                linkingCmd = "ar rcs %s %s".format( output, array(oFilesName).join( " " ) );
+                linkingCmd = "ar rcs %s %s".format( output, oFiles.join( " " ) );
                 if( verbosity > 1 )
                     writeln( linkingCmd );
                 system( linkingCmd );
@@ -568,7 +589,7 @@ void builder( string[] args ){
                         outFile ~= ".exe";
                 }
                 output = buildNormalizedPath( iniFile[i]["builddir"],"bin", outFile ~  iniFile[i]["executableExt"] );
-                linkingCmd = "%s %s %s".format( iniFile[i]["compiler"], array(oFilesName).join( " " ), iniFile[i]["output"], output );
+                linkingCmd = "%s %s %s".format( iniFile[i]["compiler"], oFiles.join( " " ), iniFile[i]["output"], output );
                 if( verbosity > 1 )
                     writeln( linkingCmd );
                 system( linkingCmd );
