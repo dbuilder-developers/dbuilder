@@ -464,9 +464,6 @@ void builder( string[] args ){
             if( stripSourceDir )
                 dFiles[index].includeDir = sourceDir;
         }
-    writeln( "======" );
-    writeln( dFiles );
-    writeln( "======" );
 
     }
     if( !exists( configCacheFile ) )
@@ -516,7 +513,6 @@ void builder( string[] args ){
                 DirEntry tmp2 = dirEntry( files.objects );
                 if( tmp1.timeLastModified > tmp2.timeLastModified )
                     needToBuild = true;
-                writeln( needToBuild );
             }
             else
                 needToBuild = true;
