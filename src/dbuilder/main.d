@@ -145,8 +145,8 @@ void configure( string[] args ){
         writeln( "    --name --n -n      Set project name"                                                              );
         writeln( "    --sourcedir        Set directory where source files are located: [project name]:<dir1>,<dir>..."  );
         writeln( "    --sourceFiles      Set source files path: [project name]:<file1>,<file2>..."                      );
-        writeln( "    --packageDir       Set path to root package: [project name]:<package1>,<package2>..."             );
-        writeln( "    --sourceFiles      Set source files path [project name]:<version identifier>:path1>,<path2>..."   );
+        writeln( "    --packagedir       Set path to root package: [project name]:<package1>,<package2>..."             );
+        writeln( "    --excludemodule    Set source files path [project name]:<version identifier>:path1>,<path2>..."   );
         writeln( "    --help --h -h      display this message"                                                          );
         exit(0);
     }
@@ -173,6 +173,8 @@ void configure( string[] args ){
         "name|n"        ,   &projectName        ,
         "sourcedir"     ,   &sourceDirToHash    ,
         "sourceFiles"   ,   &sourceFilesToHash  ,
+        "packagedir"    ,   &packageDirToHash   ,
+        "excludemodule" ,   &excludeModuleToHash,
         "help|h"        ,   &help
     );
 
@@ -411,9 +413,12 @@ void configure( string[] args ){
         project["linker"]           = info.flag.linker;
         project["dl"]               = info.flag.dl;
         project["fpic"]             = info.flag.fpic;
-        project["output"]           = info.flag.output;
+        project["objectFile"]       = info.flag.objectFile;
+        project["objectDir"]        = info.flag.objectDir;
         project["headerFile"]       = info.flag.headerFile;
+        project["headerDir"]        = info.flag.headerDir;
         project["docFile"]          = info.flag.docFile;
+        project["docDir"]           = info.flag.docDir;
         project["noObj"]            = info.flag.noObj;
         project["ddeprecated"]      = info.flag.ddeprecated;
         project["ddoc_macro"]       = info.flag.ddoc_macro;
@@ -453,12 +458,15 @@ void builder( string[] args ){
             size_t index                = oldLength + i;
             string baseName             = (stripSourceDir) ? d.stripExtension[sourceDir.length + 1 .. $]: d.stripExtension;
             dFiles[index].sources       = d;
-            dFiles[index].objects       = buildNormalizedPath ( builddir , "objects"        ,  baseName ~ ".o" );
-            dFiles[index].documentations= buildNormalizedPath ( builddir , "documentations" ,  baseName ~ ".html" );
-            dFiles[index].interfaces    = buildNormalizedPath ( builddir , "imports"        ,  baseName ~ ".di" );
+            dFiles[index].objects       = buildNormalizedPath ( builddir , "objects"    ,  baseName ~ ".o" );
+            dFiles[index].documentations= buildNormalizedPath ( builddir , "doc"        ,  baseName ~ ".html" );
+            dFiles[index].interfaces    = buildNormalizedPath ( builddir , "imports"    ,  baseName ~ ".di" );
             if( stripSourceDir )
                 dFiles[index].includeDir = sourceDir;
         }
+    writeln( "======" );
+    writeln( dFiles );
+    writeln( "======" );
 
     }
     if( !exists( configCacheFile ) )
@@ -471,7 +479,6 @@ void builder( string[] args ){
     //~ defaultPoolThreads( to!uint(iniFile["jobs"]) );                                 // Set number of jobs to execute in same time
 
     IniFile buildInfo = new Section("root", 0);   // Where cache data will be stored
-
     for( size_t i = 0; i < max; i++ ){
 
         string   outFile = iniFile[i].name;
@@ -483,7 +490,6 @@ void builder( string[] args ){
         Section  binarySection          = new Section("binary", 2);
 
         if( "sourcedir" in iniFile[i] ){
-
             foreach( f; iniFile[i]["sourcedir"] .split(","))
                 search( f, iniFile[i]["builddir"], dFiles );
         }
@@ -501,15 +507,16 @@ void builder( string[] args ){
         if( verbosity > 1 )
             writeln( dFiles );
 
-        foreach( files; dFiles ){//todo use  iniFile["filter"]; use time to build, rebuild or do nothing
+        foreach( files; parallel(dFiles, 1) ){//todo use  iniFile["filter"]; use time to build, rebuild or do nothing
 
             bool needToBuild        = false;
 
             if( exists( files.objects ) ){
                 DirEntry tmp1 = dirEntry( files.sources );
                 DirEntry tmp2 = dirEntry( files.objects );
-                if( tmp1.timeLastModified < tmp2.timeLastModified )
+                if( tmp1.timeLastModified > tmp2.timeLastModified )
                     needToBuild = true;
+                writeln( needToBuild );
             }
             else
                 needToBuild = true;
@@ -529,7 +536,7 @@ void builder( string[] args ){
                     cmd ~= ( iniFile[i]["dl"].empty ) ? "" : " " ~ iniFile[i]["linker"] ~ iniFile["dl"];
                 cmd ~= " -c %s %s%s %s%s %s%s".format (
                                                         files.sources           ,
-                                                        iniFile[i]["output"]    ,
+                                                        iniFile[i]["objectFile"],
                                                         files.objects           ,
                                                         iniFile[i]["docFile"]   ,
                                                         files.documentations    ,
@@ -550,7 +557,12 @@ void builder( string[] args ){
             importsSection[ baseName(files.interfaces) ] = files.interfaces;
         }
 
-        string[] oFiles = array( dFiles.map!( a => a.objects ).filter!( ( a ) =>  !a.empty ) );
+        string[] oFiles = array (
+                                    dFiles
+                                        .filter!( ( a ) =>  exists( a.objects ) )
+                                        .filter!( ( a ) => dirEntry( a.sources ) > dirEntry( a.objects ) )
+                                        .map!( a => a.objects )
+                                );
 
         string output       = "";
         string linkingCmd   = "";
@@ -558,11 +570,12 @@ void builder( string[] args ){
         switch(iniFile[i]["type"]){
             case("shared"):
                 if( !exists("lib") )
-                     mkdir( "lib" );
+                    mkdir( "lib" );
                 else
-                    assert( isDir("lib") , "A file \"lib\" exist already then it is impossible to create a directory with same name" );
+                    enforce( isDir("lib") , "A file \"lib\" exist already then it is impossible to create a directory with same name" );
+
                 output = buildNormalizedPath( iniFile[i]["builddir"],"lib", "lib" ~ outFile ~  iniFile[i]["dynamicLibExt"] ~ "." ~ iniFile[i]["version"] );
-                linkingCmd = "%s %s %s %s%s".format( iniFile[i]["compiler"], iniFile[i]["soname"], oFiles.join( " " ), iniFile[i]["output"], output);
+                linkingCmd = "%s %s %s %s%s".format( iniFile[i]["compiler"], iniFile[i]["soname"], oFiles.join( " " ), iniFile[i]["objectFile"], output);
                 if( verbosity > 1 )
                     writeln( linkingCmd );
                 system( linkingCmd );
@@ -585,11 +598,11 @@ void builder( string[] args ){
                 break;
             case("executable"):
                 version( Windows ){
-                    if( extension(outFile) != ".exe" )
+                    if( outFile.extension != ".exe" )
                         outFile ~= ".exe";
                 }
                 output = buildNormalizedPath( iniFile[i]["builddir"],"bin", outFile ~  iniFile[i]["executableExt"] );
-                linkingCmd = "%s %s %s".format( iniFile[i]["compiler"], oFiles.join( " " ), iniFile[i]["output"], output );
+                linkingCmd = "%s %s %s".format( iniFile[i]["compiler"], oFiles.join( " " ), iniFile[i]["objectFile"], output );
                 if( verbosity > 1 )
                     writeln( linkingCmd );
                 system( linkingCmd );
@@ -680,6 +693,8 @@ void installer( string[] args ){
             string installDir = dirName( dest );
             if( !exists( installDir ) )
                 mkdirRecurse( installDir );
+            if( exists( dest ) )
+                remove( dest );
             copy( diFiles, dest );
         }
 
@@ -690,6 +705,8 @@ void installer( string[] args ){
             string installDir = dirName( dest );
             if( !exists( installDir ) )
                 mkdirRecurse( installDir );
+            if( exists( dest ) )
+                remove( dest );
             copy( docFiles, dest );
         }
 
@@ -702,6 +719,8 @@ void installer( string[] args ){
                     string dest = binFiles.replace( buildlibDir, libdirProject );
                     if( verbosity > 1 )
                         writeln( "Copy ",  binFiles, " to ", dest);
+                    if( exists( dest ) )
+                        remove( dest );
                     copy(binFiles, dest);
                 }
                 break;
@@ -713,7 +732,8 @@ void installer( string[] args ){
 
                     if( verbosity > 1 )
                         writeln( "Copy ",  binFiles, " to ", dest);
-
+                    if( exists( dest ) )
+                        remove( dest );
                     copy(binFiles, dest);
                 }
                 break;
@@ -725,7 +745,8 @@ void installer( string[] args ){
 
                     if( verbosity > 1 )
                         writeln( "Copy ",  binFiles, " to ", dest);
-
+                    if( exists( dest ) )
+                        remove( dest );
                     copy(binFiles, dest);
                     version( Posix )
                         chmod( dest.toStringz, S_IRUSR| S_IWUSR| S_IXUSR | S_IRGRP| S_IXGRP| S_IROTH | S_IXOTH );

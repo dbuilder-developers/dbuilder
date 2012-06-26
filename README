@@ -14,9 +14,8 @@ dbuilder need:
 
 BUILD
 ------
-move to src dir and build with your compiler
-$ mv src
-$ ldc2  src/dbuilder/information.d  src/dbuilder/ini.d  src/dbuilder/main.d -of builder
+Build with your compiler
+$ ldc2  src/dbuilder/information.d  src/dbuilder/ini.d  src/dbuilder/main.d -ofbuilder
 $ dmd   src/dbuilder/information.d  src/dbuilder/ini.d  src/dbuilder/main.d -ofbuilder
 $ gdmd  src/dbuilder/information.d  src/dbuilder/ini.d  src/dbuilder/main.d -ofbuilder
 
@@ -59,8 +58,10 @@ pkgconfigdir=<path>
 importsdir=<path>
 dflags=<compiler flag> warning some compiler do not have same flag use it only if need
 linktolib=<lib1,lib2,lib3> comma separated
-sourcedir=<path>
-sourcefiles=<path>
+sourcedir=<project name>:<dir1>,<dir2>
+sourcefiles=<project name>:<file1>,<file2>
+packagedir=<project name>:<dir1>,<dir2>
+excludemodule=<project name>:<dir1>,<dir2>
 buildir=<path>
 compiler=<name> use it from command line that is the better way
 arch=<arch name> default take same arch to the system you can force by using this parameter
